@@ -1,4 +1,6 @@
-# Assembly tests (scaffold)
+# Assembly tests
 
-Add a smoke test that loads `../asm-polycallrc`, calls the adapter, and asserts a
-zero status. Mirror the reference bindings (pypolycall / rust-polycall).
+`asm_polycall_adapter_test.c` links the real assembly object against a mock
+libpolycall FFI. It verifies that the adapter forwards the path, sets `run=1`,
+and propagates both success and failure statuses unchanged. Run it with
+`make test` or `npm test`.

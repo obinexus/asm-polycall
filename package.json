@@ -1,25 +1,71 @@
 {
   "name": "@obinexusltd/asm-polycall",
   "version": "1.0.0",
-  "description": "**Assembly** binding for [libpolycall](https://github.com/obinexus/libpolycall) — a\r scaffolded adapter (TODO tracked).",
-  "main": "index.js",
-  "directories": {
-    "example": "examples",
-    "test": "tests"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Cross-platform assembly ABI binding for the libpolycall 1.5.0 C FFI.",
+  "keywords": [
+    "assembly",
+    "asm",
+    "libpolycall",
+    "ffi",
+    "x86-64",
+    "aarch64"
+  ],
+  "homepage": "https://github.com/obinexus/asm-polycall#readme",
+  "bugs": {
+    "url": "https://github.com/obinexus/asm-polycall/issues"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/obinexus/asm-polycall.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/obinexus/asm-polycall/issues"
+  "license": "MIT",
+  "author": {
+    "name": "Nnamdi Michael Okpala",
+    "email": "okpalan@protonmail.com"
   },
-  "homepage": "https://github.com/obinexus/asm-polycall#readme"
+  "type": "commonjs",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./src/*": "./src/*",
+    "./include/*": "./include/*",
+    "./generated/*": "./generated/*",
+    "./examples/*": "./examples/*",
+    "./config": "./asm-polycallrc",
+    "./manifest": "./polycall-binding.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "src/",
+    "include/",
+    "generated/",
+    "examples/",
+    "scripts/",
+    "tests/",
+    "Makefile",
+    "polycall-binding.json",
+    "asm-polycallrc",
+    "README.md",
+    "TODO.md"
+  ],
+  "directories": {
+    "example": "examples",
+    "lib": "lib",
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "make",
+    "clean": "make clean",
+    "test": "make test && node tests/package.test.js",
+    "verify": "make verify-dry",
+    "prepack": "npm run test && npm run verify"
+  },
+  "engines": {
+    "node": ">=18",
+    "npm": ">=9"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

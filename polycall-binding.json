@@ -5,7 +5,13 @@
   "adapter": true,
   "ffi": true,
   "config": "asm-polycallrc",
-  "core": "../../src",
+  "core": "../libpolycall",
+  "entrypoint": "src/asm_polycall.S",
+  "header": "include/asm_polycall.h",
+  "assembler": "GNU-compatible assembler via C compiler",
+  "architectures": ["x86_64", "x86", "aarch64", "arm"],
+  "build": "make",
+  "test": "make test",
   "license": "MIT OBINexus",
-  "author": "Nnamdi Michael Okpala"
+  "author": "Nnamdi Michael Okpala <okpalan@protonmail.com>"
 }

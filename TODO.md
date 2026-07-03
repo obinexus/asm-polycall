@@ -1,14 +1,12 @@
 # TODO — asm-polycall (Assembly)
 
-Status: 🧩 scaffolded adapter for libpolycall 1.5.0. Honestly not yet wired to
-the core — this file tracks the remaining work. Rolled up in
-[../../docs/release/TODO-1.5.md](../../docs/release/TODO-1.5.md).
+Status: implemented thin adapter for libpolycall 1.5.0.
 
 - [x] Folder structure, manifest, and `asm-polycallrc` (shared schema)
-- [ ] Locate/generate Assembly FFI bindings for `polycall_ffi.h`
-- [ ] Implement the thin adapter in `src/` (idioms -> `polycall_ffi_run_config`)
-- [ ] Add a runnable example under `examples/`
-- [ ] Add a smoke test under `tests/`
-- [ ] Confirm `scripts/verify-dry.sh` passes (no core duplication)
+- [x] Generate the consumed declaration from `polycall_ffi.h`
+- [x] Implement GNU assembly adapters for supported C ABIs
+- [x] Add a runnable example under `examples/`
+- [x] Add an ABI smoke test under `tests/`
+- [x] Add `scripts/verify-dry.sh` (no core duplication)
 
 Do not add config parsing or runtime logic here — adapt the core only.
