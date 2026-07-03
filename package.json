@@ -1,0 +1,25 @@
+{
+  "name": "@obinexusltd/asm-polycall",
+  "version": "1.0.0",
+  "description": "**Assembly** binding for [libpolycall](https://github.com/obinexus/libpolycall) — a\r scaffolded adapter (TODO tracked).",
+  "main": "index.js",
+  "directories": {
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/obinexus/asm-polycall.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/obinexus/asm-polycall/issues"
+  },
+  "homepage": "https://github.com/obinexus/asm-polycall#readme"
+}
