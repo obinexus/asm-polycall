@@ -1,17 +1,27 @@
 {
   "name": "asm-polycall",
-  "version": "1.5.0",
+  "version": "1.0.0",
+  "package": "@obinexusltd/asm-polycall",
   "language": "Assembly",
   "adapter": true,
   "ffi": true,
+  "abi": 1,
   "config": "asm-polycallrc",
-  "core": "../libpolycall",
+  "core": "polycall >= 1.1.0 (binding ABI 1)",
+  "core_repository": "https://github.com/obinexus/polycall",
+  "repository": "https://github.com/obinexus/asm-polycall",
   "entrypoint": "src/asm_polycall.S",
   "header": "include/asm_polycall.h",
-  "assembler": "GNU-compatible assembler via C compiler",
-  "architectures": ["x86_64", "x86", "aarch64", "arm"],
+  "assembler": "GNU-compatible assembler via the C compiler (gcc or clang)",
+  "architectures": {
+    "x86_64-sysv": "runtime-tested (Linux)",
+    "x86_64-win64": "runtime-tested (MSYS2 UCRT64)",
+    "aarch64": "assembles (ELF, Mach-O, Windows COFF); not runtime-tested",
+    "x86": "assembles (ELF PIC, Windows, Mach-O); not runtime-tested",
+    "arm": "assembles (ELF); not runtime-tested"
+  },
   "build": "make",
   "test": "make test",
-  "license": "MIT OBINexus",
+  "license": "MIT",
   "author": "Nnamdi Michael Okpala <okpalan@protonmail.com>"
 }

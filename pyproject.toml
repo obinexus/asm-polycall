@@ -1,0 +1,15 @@
+# QA descriptor for the Polycall binding matrix (read by polycall/qa/run_qa.py).
+# This repository is NOT a Python package and is not pip-installable;
+# its native manifest is Makefile (npm source package: package.json).
+[tool.polycall.binding]
+name = "asm-polycall"
+language = "Assembly"
+native_manifest = "Makefile"
+registry = "npm"
+package = "@obinexusltd/asm-polycall"
+abi = 1
+support = "supported"
+linux_image = "node:22"
+build = "sh /qa/build-linux-core.sh && export PKG_CONFIG_PATH=/opt/polycall/lib/pkgconfig LD_LIBRARY_PATH=/opt/polycall/lib PATH=/opt/polycall/bin:$PATH && make"
+test = "make test && make verify-dry"
+windows_test = "MSYS2 UCRT64 shell: PKG_CONFIG_PATH=<windows-ucrt64-x64>/lib/pkgconfig PATH=<windows-ucrt64-x64>/bin:$PATH make test"

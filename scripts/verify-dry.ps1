@@ -1,22 +1,24 @@
 $ErrorActionPreference = 'Stop'
 
+# Thin-adapter audit (see verify-dry.sh).
 $root = Split-Path -Parent $PSScriptRoot
 $sourcePath = Join-Path $root 'src/asm_polycall.S'
 $source = Get-Content -Raw $sourcePath
-$forbidden = 'fopen|CreateFile|sscanf|strtok|socket|connect'
-$matches = Select-String -Path $sourcePath -Pattern $forbidden
+$found = Select-String -Path $sourcePath -Pattern 'fopen|CreateFile|sscanf|strtok|socket|connect'
 
-if ($matches) {
-    $matches | ForEach-Object { Write-Error $_.Line }
+if ($found) {
+    $found | ForEach-Object { Write-Error $_.Line }
     throw 'asm-polycall must not parse configuration or implement runtime logic'
 }
 
 $required = @(
-    'polycall_ffi_run_config',
-    'pushl $1',
-    'movl $1, %esi',
-    'movl $1, %edx',
-    'mov w1, #1'
+    'SYM(polycall_ffi_run_config)',
+    'SYM(polycall_ffi_abi_version)',
+    'SYM(polycall_ffi_version)',
+    'SYM(polycall_peer_recv)',
+    'movl $\run, %esi',
+    'movl $\run, %edx',
+    'mov w1, #\run'
 )
 
 foreach ($token in $required) {

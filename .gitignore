@@ -2,3 +2,6 @@
 /lib/
 *.o
 *.obj
+*.tgz
+.polycall-qa.*
+asm_cli_*

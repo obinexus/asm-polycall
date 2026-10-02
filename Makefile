@@ -1,75 +1,80 @@
+# asm-polycall -- GNU Make with a POSIX shell (Linux, macOS, MSYS2 on Windows).
+# The installed Polycall core (>= 1.1.0, binding ABI 1) is found with
+# pkg-config: PKG_CONFIG_PATH=<prefix>/lib/pkgconfig.
 CC ?= gcc
 AR ?= ar
+CLANG ?= clang
+PKG_CONFIG ?= pkg-config
+
+POLYCALL_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags polycall 2>/dev/null)
+POLYCALL_LIBS ?= $(shell $(PKG_CONFIG) --libs polycall 2>/dev/null)
 
 CPPFLAGS ?=
-CPPFLAGS += -Iinclude -Igenerated
-CFLAGS ?= -O2
-CFLAGS += -Wall -Wextra -Wpedantic
+CPPFLAGS += -Iinclude $(POLYCALL_CFLAGS)
+CFLAGS ?= -O2 -g
+CFLAGS += -std=c11 -Wall -Wextra -Wpedantic
 
 BUILD_DIR := build
 LIB_DIR := lib
 ADAPTER_OBJ := $(BUILD_DIR)/asm_polycall.o
 STATIC_LIB := $(LIB_DIR)/libasm_polycall.a
-TEST_BIN := $(BUILD_DIR)/asm_polycall_adapter_test
+TEST_BIN := $(BUILD_DIR)/asm_polycall_real_test
 EXAMPLE_BIN := $(BUILD_DIR)/basic
 
 ifeq ($(OS),Windows_NT)
-EXE_EXT := .exe
-TEST_BIN := $(TEST_BIN)$(EXE_EXT)
-EXAMPLE_BIN := $(EXAMPLE_BIN)$(EXE_EXT)
+TEST_BIN := $(TEST_BIN).exe
+EXAMPLE_BIN := $(EXAMPLE_BIN).exe
 endif
+
+# Targets the shims are assembled for by `make cross-check` (needs clang).
+CROSS_TARGETS := x86_64-linux-gnu x86_64-w64-windows-gnu i686-linux-gnu \
+	i686-w64-windows-gnu aarch64-linux-gnu aarch64-w64-windows-gnu \
+	armv7-linux-gnueabihf x86_64-apple-darwin arm64-apple-darwin
 
 .DEFAULT_GOAL := all
 
 .PHONY: all
 all: $(STATIC_LIB)
 
+.PHONY: check-core
+check-core:
+	@test -n "$(POLYCALL_LIBS)" || { echo "asm-polycall: pkg-config cannot find polycall (>= 1.1.0); set PKG_CONFIG_PATH=<prefix>/lib/pkgconfig" >&2; exit 2; }
+
 $(BUILD_DIR) $(LIB_DIR):
-ifeq ($(OS),Windows_NT)
-	@if not exist "$@" mkdir "$@"
-else
 	@mkdir -p $@
-endif
 
 $(ADAPTER_OBJ): src/asm_polycall.S | $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
+	$(CC) -c $< -o $@
 
 $(STATIC_LIB): $(ADAPTER_OBJ) | $(LIB_DIR)
 	$(AR) rcs $@ $^
 
-$(TEST_BIN): src/asm_polycall.S tests/polycall_ffi_mock.c tests/asm_polycall_adapter_test.c | $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) -Itests $(CFLAGS) $^ -o $@
+$(TEST_BIN): tests/asm_polycall_real_test.c $(ADAPTER_OBJ) include/asm_polycall.h | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/asm_polycall_real_test.c $(ADAPTER_OBJ) -o $@ $(LDFLAGS) $(POLYCALL_LIBS) -pthread
 
+# Real-core test incl. interop with the C CLI (exit 77 = SKIP without it).
 .PHONY: test
-test: $(TEST_BIN)
-	$(TEST_BIN)
+test: check-core $(TEST_BIN)
+	sh tests/run-real.sh $(TEST_BIN) .
 
 .PHONY: example
-example: $(ADAPTER_OBJ) | $(BUILD_DIR)
-ifeq ($(OS),Windows_NT)
-	@if "$(strip $(POLYCALL_LDFLAGS))"=="" (echo Set POLYCALL_LDFLAGS to the libpolycall v1.5 linker flags & exit /b 2)
-else
-	@test -n "$(POLYCALL_LDFLAGS)" || (echo "Set POLYCALL_LDFLAGS to the libpolycall v1.5 linker flags" && exit 2)
-endif
-	$(CC) $(CPPFLAGS) $(CFLAGS) examples/basic.c $(ADAPTER_OBJ) \
-		$(POLYCALL_LDFLAGS) -o $(EXAMPLE_BIN)
+example: check-core $(ADAPTER_OBJ)
+	$(CC) $(CPPFLAGS) $(CFLAGS) examples/basic.c $(ADAPTER_OBJ) -o $(EXAMPLE_BIN) $(LDFLAGS) $(POLYCALL_LIBS)
 	$(EXAMPLE_BIN)
+
+# Assemble the shims for every supported target (no linking, no running).
+.PHONY: cross-check
+cross-check: | $(BUILD_DIR)
+	@command -v $(CLANG) >/dev/null || { echo "SKIP: $(CLANG) not found"; exit 77; }
+	@for t in $(CROSS_TARGETS); do \
+		$(CLANG) --target=$$t -c src/asm_polycall.S -o $(BUILD_DIR)/cross-$$t.o || exit 1; \
+		echo "assembled for $$t"; \
+	done
 
 .PHONY: verify-dry
 verify-dry:
-ifeq ($(OS),Windows_NT)
-	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-dry.ps1
-else
 	sh scripts/verify-dry.sh
-endif
 
 .PHONY: clean
 clean:
-ifeq ($(OS),Windows_NT)
-	@if exist "$(BUILD_DIR)" rmdir /s /q "$(BUILD_DIR)"
-	@if exist "$(LIB_DIR)" rmdir /s /q "$(LIB_DIR)"
-else
 	rm -rf $(BUILD_DIR) $(LIB_DIR)
-endif
-
--include $(ADAPTER_OBJ:.o=.d)
