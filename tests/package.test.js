@@ -12,11 +12,11 @@ for (const [name, file] of Object.entries(binding)) {
 }
 
 assert.equal(
-  require.resolve('@obinexusltd/asm-polycall/src/asm_polycall.S'),
+  require.resolve('asm-polycall/src/asm_polycall.S'),
   binding.assembly
 );
 assert.equal(
-  require.resolve('@obinexusltd/asm-polycall/include/asm_polycall.h'),
+  require.resolve('asm-polycall/include/asm_polycall.h'),
   binding.publicHeader
 );
 

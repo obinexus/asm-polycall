@@ -1,7 +1,7 @@
 {
   "name": "asm-polycall",
   "version": "1.0.0",
-  "package": "@obinexusltd/asm-polycall",
+  "package": "asm-polycall",
   "language": "Assembly",
   "adapter": true,
   "ffi": true,

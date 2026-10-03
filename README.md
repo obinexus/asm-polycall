@@ -1,7 +1,7 @@
 # asm-polycall
 
 GNU-assembler binding for the [Polycall](https://github.com/obinexus/polycall)
-core, published as the npm source package `@obinexusltd/asm-polycall`.
+core, published as the npm source package `asm-polycall`.
 
 `src/asm_polycall.S` is a set of tail-call shims over the core's **binding
 ABI v1** (`<polycall.h>`, `docs/BINDING_ABI.md` in the core repository;
@@ -108,7 +108,7 @@ checks all four cases.
 ## npm source package
 
 ```sh
-npm install @obinexusltd/asm-polycall
+npm install asm-polycall
 ```
 
 The CommonJS entry point only exposes absolute paths (`assembly`,
