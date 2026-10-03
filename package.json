@@ -1,7 +1,7 @@
 {
   "name": "@obinexusltd/asm-polycall",
   "version": "1.0.0",
-  "description": "GNU-assembler shims over the Polycall binding ABI v1 (polycall >= 1.1.0): x86-64 System V and Win64 tested; AArch64, x86-32 and AArch32 assemble.",
+  "description": "GNU-assembler shims over the Polycall binding ABI v1 (polycall >= 1.1.0): x86-64 (System V, Win64) and x86-32 (Linux, Windows) tested; AArch64 and AArch32 Linux tested under emulation; Mach-O and Windows on ARM64 assemble.",
   "keywords": [
     "assembly",
     "asm",

@@ -16,9 +16,11 @@
  * Targets (branch selected by the C preprocessor):
  *   x86-64 System V (ELF, Mach-O)    runtime-tested on Linux
  *   x86-64 Windows (COFF, MinGW)     runtime-tested with MSYS2 UCRT64
- *   AArch64 ELF / Mach-O / Windows   assembles; not runtime-tested here
- *   x86-32 ELF / Windows / Mach-O    assembles; not runtime-tested here
- *   AArch32 ELF                      assembles; not runtime-tested here
+ *   AArch64 ELF                      runtime-tested on Linux under qemu-user
+ *   AArch64 Mach-O / Windows         assembles; not runtime-tested here
+ *   x86-32 ELF / Windows             runtime-tested (Linux i386, Windows WoW64)
+ *   x86-32 Mach-O                    assembles; not runtime-tested here
+ *   AArch32 ELF                      runtime-tested on Linux armhf under qemu-user
  * MSVC's cl/ml64 cannot assemble GNU .S files: on Windows build with MinGW
  * gcc or clang.
  */

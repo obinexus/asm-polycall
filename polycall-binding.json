@@ -15,10 +15,10 @@
   "assembler": "GNU-compatible assembler via the C compiler (gcc or clang)",
   "architectures": {
     "x86_64-sysv": "runtime-tested (Linux)",
-    "x86_64-win64": "runtime-tested (MSYS2 UCRT64)",
-    "aarch64": "assembles (ELF, Mach-O, Windows COFF); not runtime-tested",
-    "x86": "assembles (ELF PIC, Windows, Mach-O); not runtime-tested",
-    "arm": "assembles (ELF); not runtime-tested"
+    "x86_64-win64": "runtime-tested (MSYS2 UCRT64; UCRT64 and MSVC core DLLs)",
+    "aarch64": "runtime-tested on Linux under qemu-user emulation; Mach-O and Windows COFF assemble, not runtime-tested",
+    "x86": "runtime-tested on Linux (ELF PIC, native i386) and Windows (COFF, WoW64); Mach-O assembles, not runtime-tested",
+    "arm": "runtime-tested on Linux armhf under qemu-user emulation"
   },
   "build": "make",
   "test": "make test",
