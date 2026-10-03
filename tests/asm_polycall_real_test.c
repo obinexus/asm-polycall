@@ -9,7 +9,8 @@
  * the tail calls keep stack-passed arguments intact on both x86-64 ABIs.
  * Checks needing the C CLI read POLYCALL_CLI, POLYCALL_CLI_PEER,
  * POLYCALL_RPC_ENDPOINT and POLYCALL_DEV_TOKEN (tests/run-real.sh); without
- * them they print SKIP, never PASS. No assert(): checks also run with NDEBUG.
+ * them they print SKIP, never PASS, and the program exits 77 (SKIP) when any
+ * check was skipped and none failed. No assert(): checks also run with NDEBUG.
  */
 #if !defined(_WIN32)
 #define _POSIX_C_SOURCE 200809L
@@ -24,10 +25,14 @@
 #include <time.h>
 
 #if defined(_WIN32)
+#include <direct.h>
+#include <wchar.h>
 #include <windows.h>
 static void sleep_ms(unsigned ms) { Sleep(ms); }
 static double now_ms(void) { return (double)GetTickCount64(); }
 #else
+#include <sys/stat.h>
+#include <unistd.h>
 static void sleep_ms(unsigned ms)
 {
     struct timespec ts;
@@ -541,6 +546,197 @@ static void test_interop(void)
     free(m.data);
 }
 
+/* ---- concurrent calls, daemon, non-ASCII paths, limits ------------------ */
+
+typedef struct {
+    const char *ep;
+    int idx;
+    int good;
+} caller_t;
+
+static void *caller_thread(void *arg)
+{
+    caller_t *c = arg;
+    static const size_t cap = 4096;
+    char *out = malloc(cap);
+    char in[64], want[96];
+    size_t len = 0;
+    int i;
+    for (i = 0; out && i < 10; ++i) {
+        snprintf(in, sizeof in, "{\"t\":%d,\"i\":%d}", c->idx, i);
+        snprintf(want, sizeof want, "{\"echo\":%s}", in);
+        if (asm_polycall_call(c->ep, "debug", "echo", in, 5000, out, cap, &len) == POLYCALL_OK &&
+            strcmp(out, want) == 0 && len == strlen(want)) {
+            c->good++;
+        }
+    }
+    free(out);
+    return NULL;
+}
+
+static void test_call_limits_and_concurrency(void)
+{
+    static char out[POLYCALL_CALL_MAX_OUTPUT + 1];
+    size_t len = 0;
+    int st, i, good = 0;
+    pthread_t pool[4];
+    caller_t c[4];
+    const char *ep = env("POLYCALL_RPC_ENDPOINT");
+    if (!ep) {
+        skip("call: timeout limits / concurrent calls", "POLYCALL_RPC_ENDPOINT not set (run via tests/run-real.sh)");
+        return;
+    }
+    EXPECT(asm_polycall_call(ep, "debug", "echo", "600000", 600000u, out, sizeof out, &len), POLYCALL_OK,
+           "call: timeout_ms 600000 (maximum) accepted");
+    check(strcmp(out, "{\"echo\":600000}") == 0, "call: output with the maximum timeout", "%s", out);
+    st = asm_polycall_call(ep, "debug", "echo", "1", 1u, out, sizeof out, &len);
+    check(st == POLYCALL_OK || st == POLYCALL_E_TIMEOUT, "call: timeout_ms 1 (minimum) accepted", "%d", st);
+    EXPECT(asm_polycall_call(ep, "debug", "echo", "{}", 600001u, out, sizeof out, &len),
+           POLYCALL_E_INVALID_ARGUMENT, "call: timeout_ms 600001 -> E_INVALID_ARGUMENT");
+    EXPECT(asm_polycall_call(ep, "debug", "echo", "{}", UINT32_MAX, out, sizeof out, &len),
+           POLYCALL_E_INVALID_ARGUMENT, "call: timeout_ms UINT32_MAX -> E_INVALID_ARGUMENT");
+    EXPECT(asm_polycall_call(ep, "debug", "echo", "\"0123456789\"", 3000, out, 5, &len), POLYCALL_E_TOO_LARGE,
+           "call: out_cap too small -> E_TOO_LARGE");
+    check(len == strlen("{\"echo\":\"0123456789\"}"), "call: out_len = bytes needed", "%zu", len);
+    for (i = 0; i < 4; ++i) {
+        c[i].ep = ep;
+        c[i].idx = i;
+        c[i].good = 0;
+        pthread_create(&pool[i], NULL, caller_thread, &c[i]);
+    }
+    for (i = 0; i < 4; ++i) {
+        pthread_join(pool[i], NULL);
+        good += c[i].good;
+    }
+    check(good == 40, "call: 4 threads x 10 concurrent calls, exact outputs", "%d of 40", good);
+}
+
+static void test_daemon_call(void)
+{
+    static char out[POLYCALL_CALL_MAX_OUTPUT + 1];
+    size_t len = 0;
+    const char *ep = env("POLYCALL_DAEMON_ENDPOINT");
+    if (!ep) {
+        skip("daemon call: echo / inventory / unknown op / deadline",
+             "POLYCALL_DAEMON_ENDPOINT not set (run via tests/run-real.sh)");
+        return;
+    }
+    EXPECT(asm_polycall_call(ep, "debug", "echo", "{\"d\":[1,\"\xc3\xa9\"]}", 3000, out, sizeof out, &len),
+           POLYCALL_OK, "daemon call: debug.echo");
+    check(strcmp(out, "{\"echo\":{\"d\":[1,\"\xc3\xa9\"]}}") == 0 && len == strlen(out),
+          "daemon call: exact output + out_len", "%s", out);
+    EXPECT(asm_polycall_call(ep, "inventory", "get", "{\"item_id\":\"widget-a\"}", 3000, out, sizeof out, &len),
+           POLYCALL_OK, "daemon call: inventory.get");
+    check(strcmp(out, "{\"item_id\":\"widget-a\",\"quantity\":42,\"in_stock\":true}") == 0,
+          "daemon call: inventory.get exact output", "%s", out);
+    EXPECT(asm_polycall_call(ep, "debug", "no_such_op", "{}", 3000, out, sizeof out, &len), POLYCALL_E_NOT_FOUND,
+           "daemon call: unknown operation -> E_NOT_FOUND");
+    check(strstr(out, "operation.unknown") != NULL, "daemon call: unknown operation error object", "%s", out);
+    EXPECT(asm_polycall_call(ep, "debug", "sleep", "{\"ms\":3000}", 200, out, sizeof out, &len), POLYCALL_E_TIMEOUT,
+           "daemon call: deadline -> E_TIMEOUT");
+}
+
+/* UTF-8 file-system helpers (Windows needs the wide API for non-ASCII names) */
+#if defined(_WIN32)
+static int to_wide(const char *s, wchar_t *w, int n) { return MultiByteToWideChar(CP_UTF8, 0, s, -1, w, n); }
+static int mkdir_u8(const char *p) { wchar_t w[512]; return to_wide(p, w, 512) ? _wmkdir(w) : -1; }
+static int rmdir_u8(const char *p) { wchar_t w[512]; return to_wide(p, w, 512) ? _wrmdir(w) : -1; }
+static int remove_u8(const char *p) { wchar_t w[512]; return to_wide(p, w, 512) ? _wremove(w) : -1; }
+static FILE *fopen_u8(const char *p, const char *m)
+{
+    wchar_t w[512], wm[8];
+    if (!to_wide(p, w, 512) || !to_wide(m, wm, 8)) return NULL;
+    return _wfopen(w, wm);
+}
+#else
+static int mkdir_u8(const char *p) { return mkdir(p, 0755); }
+static int rmdir_u8(const char *p) { return rmdir(p); }
+static int remove_u8(const char *p) { return remove(p); }
+static FILE *fopen_u8(const char *p, const char *m) { return fopen(p, m); }
+#endif
+
+static void test_unicode_config(const char *root)
+{
+    /* "asm-polycall-<u-umlaut>nic<o-slash>d<e-acute>-<two CJK characters>" */
+    static const char dir[] = "asm-polycall-\xc3\xbcnic\xc3\xb8" "d\xc3\xa9-\xe9\x85\x8d\xe7\xbd\xae";
+    char file[512], absent[512], src[1024], js[8192], d[512];
+    char *text;
+    FILE *f;
+    int n;
+    snprintf(file, sizeof file, "%s/r\xc3\xa9glages-polycallrc", dir);
+    snprintf(absent, sizeof absent, "%s/absent-\xc3\xa9-polycallrc", dir);
+    snprintf(src, sizeof src, "%s/asm-polycallrc", root);
+    remove_u8(file);
+    rmdir_u8(dir);
+    text = slurp(src);
+    f = (mkdir_u8(dir) == 0 && text) ? fopen_u8(file, "wb") : NULL;
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+    free(text);
+    check(f != NULL, "unicode path: fixture created", "");
+    EXPECT(asm_polycall_run_config(file), POLYCALL_OK, "run_config: non-ASCII (UTF-8) config path, run=1");
+    EXPECT(asm_polycall_validate_config(file), POLYCALL_OK, "run_config: non-ASCII (UTF-8) config path, run=0");
+    n = asm_polycall_describe(file, js, (int)sizeof js);
+    check(n > 0 && strstr(js, "log_level") != NULL, "describe: non-ASCII (UTF-8) config path", "%d", n);
+    EXPECT(asm_polycall_run_config(absent), POLYCALL_E_NOT_FOUND, "run_config: missing non-ASCII path -> E_NOT_FOUND");
+    asm_polycall_last_error(d, sizeof d);
+    check(strstr(d, "absent-\xc3\xa9-polycallrc") != NULL, "last_error: detail keeps the UTF-8 name", "%s", d);
+    remove_u8(file);
+    rmdir_u8(dir);
+}
+
+static void test_limits(void)
+{
+    char id63[64], id64[65], ep[POLYCALL_ENDPOINT_MAX], buf[POLYCALL_ENDPOINT_MAX], s[64], mid[64];
+    unsigned char pl[16];
+    polycall_peer_t a, b, h = 0;
+    size_t need = 0, elen;
+    msg_t m = {0};
+    double t0;
+    memset(id63, 'n', 63);
+    id63[63] = '\0';
+    memset(id64, 'n', 64);
+    id64[64] = '\0';
+    EXPECT(asm_polycall_peer_open(id63, NULL, NULL, &h), POLYCALL_OK, "open: 63-byte node id accepted");
+    asm_polycall_peer_close(h);
+    EXPECT(asm_polycall_peer_open(id64, NULL, NULL, &h), POLYCALL_E_INVALID_ARGUMENT,
+           "open: 64-byte node id -> E_INVALID_ARGUMENT");
+    a = open_node("asm-lim-a", "127.0.0.1:0", NULL);
+    b = open_node("asm-lim-b", "127.0.0.1:0", NULL);
+    endpoint_of(b, ep);
+    memset(id63, 'm', 63);
+    memset(id64, 'm', 64);
+    EXPECT(asm_polycall_peer_send(a, ep, "id63", 4, id63, 5000), POLYCALL_OK, "send: 63-byte message id");
+    EXPECT(recv_msg(b, 5000, &m), POLYCALL_OK, "recv: 63-byte message id");
+    check(strcmp(m.id, id63) == 0, "recv: 63-byte message id intact", "%s", m.id);
+    EXPECT(asm_polycall_peer_send(a, ep, "id64", 4, id64, 5000), POLYCALL_E_INVALID_ARGUMENT,
+           "send: 64-byte message id -> E_INVALID_ARGUMENT");
+    EXPECT(asm_polycall_peer_register(a, id64, ep), POLYCALL_E_INVALID_ARGUMENT,
+           "register: 64-byte peer id -> E_INVALID_ARGUMENT");
+    elen = strlen(ep);
+    EXPECT(asm_polycall_peer_endpoint(b, buf, elen), POLYCALL_E_TOO_LARGE, "endpoint: capacity strlen -> E_TOO_LARGE");
+    EXPECT(asm_polycall_peer_endpoint(b, buf, elen + 1), POLYCALL_OK, "endpoint: capacity strlen+1 -> OK");
+    check(strcmp(buf, ep) == 0, "endpoint: exact text", "%s", buf);
+    EXPECT(asm_polycall_peer_list(b, buf, 2, &need), POLYCALL_E_TOO_LARGE, "list: capacity 2 for {} -> E_TOO_LARGE");
+    check(need == 2, "list: needed 2", "%zu", need);
+    EXPECT(asm_polycall_peer_list(b, buf, 3, &need), POLYCALL_OK, "list: capacity 3 for {} -> OK");
+    asm_polycall_peer_send(a, ep, "exactly-16-bytes", 16, "m-exact", 5000);
+    EXPECT(asm_polycall_peer_recv(b, 5000, s, sizeof s, mid, sizeof mid, pl, 15, &need), POLYCALL_E_TOO_LARGE,
+           "recv: payload_cap = size-1 -> E_TOO_LARGE");
+    check(need == 16, "recv: needed 16", "%zu", need);
+    EXPECT(asm_polycall_peer_recv(b, 0, s, sizeof s, mid, sizeof mid, pl, 16, &need), POLYCALL_OK,
+           "recv: payload_cap = size -> OK");
+    check(need == 16 && memcmp(pl, "exactly-16-bytes", 16) == 0, "recv: exact 16 bytes", "");
+    t0 = now_ms();
+    EXPECT(recv_msg(b, 0, &m), POLYCALL_E_TIMEOUT, "recv: timeout 0 polls an empty inbox");
+    check(now_ms() - t0 < 1000, "recv: timeout 0 returns without waiting", "%.0f ms", now_ms() - t0);
+    asm_polycall_peer_close(a);
+    asm_polycall_peer_close(b);
+    free(m.data);
+}
+
 int main(int argc, char **argv)
 {
     char v[32];
@@ -554,10 +750,15 @@ int main(int argc, char **argv)
     test_version();
     test_run_config(root);
     test_call();
+    test_call_limits_and_concurrency();
+    test_daemon_call();
+    test_unicode_config(root);
+    test_limits();
     test_peers();
     test_auth_transport();
     test_threads();
     test_interop();
     printf("SUMMARY pass=%d fail=%d skip=%d\n", g_pass, g_fail, g_skip);
-    return g_fail == 0 ? 0 : 1;
+    if (g_fail != 0) return 1;
+    return g_skip != 0 ? 77 : 0; /* 77: SKIP -- skipped checks are never a pass */
 }
