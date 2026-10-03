@@ -5,3 +5,6 @@
 *.tgz
 .polycall-qa.*
 asm_cli_*
+/build-*/
+/lib-*/
+.loader-errors.*

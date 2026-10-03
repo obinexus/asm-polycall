@@ -8,6 +8,7 @@ PKG_CONFIG ?= pkg-config
 
 POLYCALL_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags polycall 2>/dev/null)
 POLYCALL_LIBS ?= $(shell $(PKG_CONFIG) --libs polycall 2>/dev/null)
+POLYCALL_LIBDIR ?= $(shell $(PKG_CONFIG) --variable=libdir polycall 2>/dev/null)
 
 CPPFLAGS ?=
 CPPFLAGS += -Iinclude $(POLYCALL_CFLAGS)
@@ -21,9 +22,19 @@ STATIC_LIB := $(LIB_DIR)/libasm_polycall.a
 TEST_BIN := $(BUILD_DIR)/asm_polycall_real_test
 EXAMPLE_BIN := $(BUILD_DIR)/basic
 
+PROBE_BIN := $(BUILD_DIR)/abi_probe
+
 ifeq ($(OS),Windows_NT)
 TEST_BIN := $(TEST_BIN).exe
 EXAMPLE_BIN := $(EXAMPLE_BIN).exe
+PROBE_BIN := $(PROBE_BIN).exe
+FAKE_LIB := libpolycall.dll
+FAKE_LDFLAGS := -shared
+REAL_LIB ?= $(POLYCALL_LIBDIR)/../bin/libpolycall.dll
+else
+FAKE_LIB := libpolycall.so.1
+FAKE_LDFLAGS := -shared -fPIC -Wl,-soname,libpolycall.so.1
+REAL_LIB ?= $(POLYCALL_LIBDIR)/libpolycall.so.1
 endif
 
 # Targets the shims are assembled for by `make cross-check` (needs clang).
@@ -56,6 +67,20 @@ $(TEST_BIN): tests/asm_polycall_real_test.c $(ADAPTER_OBJ) include/asm_polycall.
 .PHONY: test
 test: check-core $(TEST_BIN)
 	sh tests/run-real.sh $(TEST_BIN) .
+
+# Loader behaviour: real library, no library, a library reporting ABI 2 and
+# a 1.0 library without the ABI v1 symbols (the last two are test fixtures,
+# tests/loader/fake_polycall.c). Linux and MinGW.
+$(PROBE_BIN): tests/abi_probe.c $(ADAPTER_OBJ) include/asm_polycall.h | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/abi_probe.c $(ADAPTER_OBJ) -o $@ $(LDFLAGS) $(POLYCALL_LIBS)
+
+$(BUILD_DIR)/fake-abi2/$(FAKE_LIB) $(BUILD_DIR)/fake-old/$(FAKE_LIB): tests/loader/fake_polycall.c
+	@mkdir -p $(dir $@)
+	$(CC) -std=c11 -O2 $(FAKE_LDFLAGS) -DFAKE_$(if $(findstring fake-abi2,$@),ABI2,OLD) $< -o $@
+
+.PHONY: test-loader
+test-loader: check-core $(PROBE_BIN) $(BUILD_DIR)/fake-abi2/$(FAKE_LIB) $(BUILD_DIR)/fake-old/$(FAKE_LIB)
+	sh tests/loader-errors.sh $(PROBE_BIN) $(REAL_LIB) $(BUILD_DIR)/fake-abi2/$(FAKE_LIB) $(BUILD_DIR)/fake-old/$(FAKE_LIB)
 
 .PHONY: example
 example: check-core $(ADAPTER_OBJ)
